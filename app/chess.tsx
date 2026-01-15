@@ -1,12 +1,38 @@
-import { View, Text, StyleSheet, Pressable, Dimensions } from 'react-native';
-import { useState } from 'react';
 import { Chess } from 'chess.js';
+import { useState } from 'react';
+import {
+  Dimensions,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+  Image,
+} from 'react-native';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
-const BOARD_SIZE = SCREEN_WIDTH - 24;
+const BOARD_SIZE = SCREEN_WIDTH;
 const SQUARE_SIZE = BOARD_SIZE / 8;
 
 const game = new Chess();
+
+/* =======================
+   PIECE IMAGE MAP
+   ======================= */
+const pieceImages: Record<string, any> = {
+  wp: require('../assets/pieces/white-pawn.png'),
+  wr: require('../assets/pieces/white-rook.png'),
+  wn: require('../assets/pieces/white-knight.png'),
+  wb: require('../assets/pieces/white-bishop.png'),
+  wq: require('../assets/pieces/white-queen.png'),
+  wk: require('../assets/pieces/white-king.png'),
+
+  bp: require('../assets/pieces/black-pawn.png'),
+  br: require('../assets/pieces/black-rook.png'),
+  bn: require('../assets/pieces/black-knight.png'),
+  bb: require('../assets/pieces/black-bishop.png'),
+  bq: require('../assets/pieces/black-queen.png'),
+  bk: require('../assets/pieces/black-king.png'),
+};
 
 export default function ChessScreen() {
   const [board, setBoard] = useState(game.board());
@@ -14,7 +40,6 @@ export default function ChessScreen() {
   const [legalMoves, setLegalMoves] = useState<string[]>([]);
 
   function onSquarePress(square: string) {
-    // Select piece
     if (!selectedSquare) {
       const moves = game.moves({ square, verbose: true });
       if (moves.length === 0) return;
@@ -24,7 +49,6 @@ export default function ChessScreen() {
       return;
     }
 
-    // Try move
     if (legalMoves.includes(square)) {
       game.move({
         from: selectedSquare,
@@ -35,7 +59,6 @@ export default function ChessScreen() {
       setBoard(game.board());
     }
 
-    // Clear selection
     setSelectedSquare(null);
     setLegalMoves([]);
   }
@@ -69,15 +92,19 @@ export default function ChessScreen() {
                   {/* Legal move dot */}
                   {isLegalMove && !square && <View style={styles.dot} />}
 
-                  {/* Capture indicator */}
+                  {/* Capture ring */}
                   {isLegalMove && square && (
                     <View style={styles.captureRing} />
                   )}
 
-                  {/* Chess piece */}
-                  <Text style={styles.piece}>
-                    {square ? pieceToChar(square) : ''}
-                  </Text>
+                  {/* Chess piece image */}
+                  {square && (
+                    <Image
+                      source={pieceImages[square.color + square.type]}
+                      style={styles.piece}
+                      resizeMode="contain"
+                    />
+                  )}
                 </Pressable>
               );
             })}
@@ -90,30 +117,9 @@ export default function ChessScreen() {
   );
 }
 
-function pieceToChar(piece: any) {
-  const white = {
-    p: '♙',
-    r: '♖',
-    n: '♘',
-    b: '♗',
-    q: '♕',
-    k: '♔',
-  };
-
-  const black = {
-    p: '♟',
-    r: '♜',
-    n: '♞',
-    b: '♝',
-    q: '♛',
-    k: '♚',
-  };
-
-  return piece.color === 'w'
-    ? white[piece.type]
-    : black[piece.type];
-}
-
+/* =======================
+   STYLES
+   ======================= */
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -157,8 +163,8 @@ const styles = StyleSheet.create({
   },
 
   piece: {
-    fontSize: SQUARE_SIZE * 0.6,
-    textAlign: 'center',
+    width: SQUARE_SIZE * 0.8,
+    height: SQUARE_SIZE * 0.8,
   },
 
   dot: {
@@ -170,7 +176,7 @@ const styles = StyleSheet.create({
   },
 
   captureRing: {
-    position: 'absolute', 
+    position: 'absolute',
     width: SQUARE_SIZE * 0.85,
     height: SQUARE_SIZE * 0.85,
     borderRadius: 100,

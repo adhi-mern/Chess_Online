@@ -17,6 +17,7 @@
     "@react-navigation/native": "^7.1.8",
     "chess.js": "^1.4.0",
     "expo": "~54.0.31",
+    "expo-audio": "~1.1.1",
     "expo-av": "~16.0.8",
     "expo-constants": "~18.0.13",
     "expo-dev-client": "~6.0.20",
