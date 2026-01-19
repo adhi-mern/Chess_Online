@@ -32,8 +32,8 @@ const pieceImages: Record<string, any> = {
 
 export default function ChessScreen() {
   const [board, setBoard] = useState(game.board());
-  const [selectedSquare, setSelectedSquare] = useState<string | null>(null);
-  const [legalMoves, setLegalMoves] = useState<string[]>([]);
+  const [selectedSquare, setSelectedSquare] = useState<Square | null>(null);
+  const [legalMoves, setLegalMoves] = useState<Square[]>([]);
 
   function onSquarePress(square: Square) {
     if (!selectedSquare) {
@@ -72,7 +72,7 @@ export default function ChessScreen() {
 
               const isDark = (rowIndex + colIndex) % 2 === 1;
               const isSelected = squareName === selectedSquare;
-              const isLegalMove = legalMoves.includes(squareName);
+              const isLegalMove = legalMoves.includes(squareName as Square);
 
               return (
                 <Pressable
