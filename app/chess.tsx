@@ -1,17 +1,13 @@
-import { Chess } from 'chess.js';
+import { Chess, Square } from 'chess.js';
 import { useState } from 'react';
 import {
-  Dimensions,
+  Image,
   Pressable,
-  StyleSheet,
   Text,
   View,
-  Image,
 } from 'react-native';
 
-const SCREEN_WIDTH = Dimensions.get('window').width;
-const BOARD_SIZE = SCREEN_WIDTH;
-const SQUARE_SIZE = BOARD_SIZE / 8;
+import styles from '../styles/chess.styles';
 
 const game = new Chess();
 
@@ -39,11 +35,10 @@ export default function ChessScreen() {
   const [selectedSquare, setSelectedSquare] = useState<string | null>(null);
   const [legalMoves, setLegalMoves] = useState<string[]>([]);
 
-  function onSquarePress(square: string) {
+  function onSquarePress(square: Square) {
     if (!selectedSquare) {
       const moves = game.moves({ square, verbose: true });
       if (moves.length === 0) return;
-
       setSelectedSquare(square);
       setLegalMoves(moves.map(m => m.to));
       return;
@@ -82,7 +77,7 @@ export default function ChessScreen() {
               return (
                 <Pressable
                   key={colIndex}
-                  onPress={() => onSquarePress(squareName)}
+                  onPress={() => onSquarePress(squareName as Square)}
                   style={[
                     styles.square,
                     { backgroundColor: isDark ? '#769656' : '#eeeed2' },
@@ -117,70 +112,3 @@ export default function ChessScreen() {
   );
 }
 
-/* =======================
-   STYLES
-   ======================= */
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#1c1c1c',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  title: {
-    fontSize: 24,
-    color: 'white',
-    marginBottom: 8,
-  },
-
-  player: {
-    color: '#ccc',
-    marginVertical: 6,
-  },
-
-  board: {
-    width: BOARD_SIZE,
-    height: BOARD_SIZE,
-    borderWidth: 2,
-    borderColor: '#999',
-  },
-
-  row: {
-    flexDirection: 'row',
-  },
-
-  square: {
-    width: SQUARE_SIZE,
-    height: SQUARE_SIZE,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  selectedSquare: {
-    borderWidth: 3,
-    borderColor: '#ff4444',
-  },
-
-  piece: {
-    width: SQUARE_SIZE * 0.8,
-    height: SQUARE_SIZE * 0.8,
-  },
-
-  dot: {
-    position: 'absolute',
-    width: SQUARE_SIZE * 0.25,
-    height: SQUARE_SIZE * 0.25,
-    borderRadius: 100,
-    backgroundColor: 'rgba(0,0,0,0.3)',
-  },
-
-  captureRing: {
-    position: 'absolute',
-    width: SQUARE_SIZE * 0.85,
-    height: SQUARE_SIZE * 0.85,
-    borderRadius: 100,
-    borderWidth: 4,
-    borderColor: 'rgba(0,0,0,0.4)',
-  },
-});
