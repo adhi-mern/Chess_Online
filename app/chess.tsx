@@ -1,11 +1,9 @@
 import { Chess, Square } from 'chess.js';
-import { useState } from 'react';
-import {
-  Image,
-  Pressable,
-  Text,
-  View,
-} from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { Image, Pressable, Text, View } from 'react-native';
+import { Audio } from 'expo-av';
+
+// npx expo start --go
 
 import styles from '../styles/chess.styles';
 
@@ -35,23 +33,75 @@ export default function ChessScreen() {
   const [selectedSquare, setSelectedSquare] = useState<Square | null>(null);
   const [legalMoves, setLegalMoves] = useState<Square[]>([]);
 
-  function onSquarePress(square: Square) {
+  /* =======================
+     SOUND REFS
+     ======================= */
+  const moveSound = useRef<Audio.Sound | null>(null);
+  const checkSound = useRef<Audio.Sound | null>(null);
+  const victorySound = useRef<Audio.Sound | null>(null);
+
+  /* =======================
+     LOAD SOUNDS
+     ======================= */
+  useEffect(() => {
+    async function loadSounds() {
+      moveSound.current = (await Audio.Sound.createAsync(
+        require('../assets/sounds/Move.mp3')
+      )).sound;
+
+      checkSound.current = (await Audio.Sound.createAsync(
+        require('../assets/sounds/Check.mp3')
+      )).sound;
+
+      victorySound.current = (await Audio.Sound.createAsync(
+        require('../assets/sounds/Victory.mp3')
+      )).sound;
+    }
+
+    loadSounds();
+
+    return () => {
+      moveSound.current?.unloadAsync();
+      checkSound.current?.unloadAsync();
+      victorySound.current?.unloadAsync();
+    };
+  }, []);
+
+  /* =======================
+     MOVE HANDLER
+     ======================= */
+  async function onSquarePress(square: Square) {
     if (!selectedSquare) {
       const moves = game.moves({ square, verbose: true });
       if (moves.length === 0) return;
+
       setSelectedSquare(square);
       setLegalMoves(moves.map(m => m.to));
       return;
     }
 
     if (legalMoves.includes(square)) {
-      game.move({
+      const move = game.move({
         from: selectedSquare,
         to: square,
         promotion: 'q',
       });
 
-      setBoard(game.board());
+      if (move) {
+        // Move or capture → same sound
+        await moveSound.current?.replayAsync();
+
+        // Checkmate
+        if (game.isCheckmate()) {
+          await victorySound.current?.replayAsync();
+        }
+        // Check
+        else if (game.isCheck()) {
+          await checkSound.current?.replayAsync();
+        }
+
+        setBoard(game.board());
+      }
     }
 
     setSelectedSquare(null);
@@ -84,15 +134,9 @@ export default function ChessScreen() {
                     isSelected && styles.selectedSquare,
                   ]}
                 >
-                  {/* Legal move dot */}
                   {isLegalMove && !square && <View style={styles.dot} />}
+                  {isLegalMove && square && <View style={styles.captureRing} />}
 
-                  {/* Capture ring */}
-                  {isLegalMove && square && (
-                    <View style={styles.captureRing} />
-                  )}
-
-                  {/* Chess piece image */}
                   {square && (
                     <Image
                       source={pieceImages[square.color + square.type]}
@@ -111,4 +155,3 @@ export default function ChessScreen() {
     </View>
   );
 }
-
