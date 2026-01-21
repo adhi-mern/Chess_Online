@@ -4,6 +4,9 @@
 node_modules/
 .vscode
 
+# Firebase config
+firebaseConfig.ts
+
 # Expo
 .expo/
 dist/
