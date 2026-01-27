@@ -1,4 +1,4 @@
-import { StyleSheet, Dimensions } from 'react-native';
+import { Dimensions, StyleSheet } from 'react-native';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const BOARD_SIZE = SCREEN_WIDTH;
@@ -11,62 +11,80 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-
-  title: {
-    fontSize: 24,
-    color: 'white',
-    marginBottom: 8,
+  // --- NEW HEADER STYLES ---
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    width: '90%',
+    marginBottom: 20,
+    marginTop: 40,
   },
-
-  player: {
-    color: '#ccc',
-    marginVertical: 6,
+  gameIdText: {
+    color: '#769656',
+    fontSize: 18,
+    fontWeight: 'bold',
+    fontFamily: 'monospace',
   },
-
+  quitBtn: {
+    backgroundColor: '#b33939', // Dark Red
+    paddingVertical: 8,
+    paddingHorizontal: 15,
+    borderRadius: 6,
+  },
+  // -------------------------
   board: {
     width: BOARD_SIZE,
     height: BOARD_SIZE,
     borderWidth: 2,
-    borderColor: '#999',
+    borderColor: '#444',
   },
-
   row: {
     flexDirection: 'row',
   },
-
   square: {
     width: SQUARE_SIZE,
     height: SQUARE_SIZE,
     alignItems: 'center',
     justifyContent: 'center',
   },
-
   selectedSquare: {
-    borderWidth: 3,
-    borderColor: '#ff4444',
+    backgroundColor: 'rgba(255, 255, 0, 0.4)', // Highlight yellow
+    borderWidth: 2,
+    borderColor: '#f1c40f',
   },
-
   piece: {
-    width: SQUARE_SIZE * 0.8,
-    height: SQUARE_SIZE * 0.8,
-  },
-
-  dot: {
-    position: 'absolute',
-    width: SQUARE_SIZE * 0.25,
-    height: SQUARE_SIZE * 0.25,
-    borderRadius: 100,
-    backgroundColor: 'rgba(0,0,0,0.3)',
-  },
-
-  captureRing: {
-    position: 'absolute',
     width: SQUARE_SIZE * 0.85,
     height: SQUARE_SIZE * 0.85,
+  },
+  dot: {
+    width: SQUARE_SIZE * 0.3,
+    height: SQUARE_SIZE * 0.3,
     borderRadius: 100,
-    borderWidth: 4,
-    borderColor: 'rgba(0,0,0,0.4)',
+    backgroundColor: 'rgba(0,0,0,0.2)',
+  },
+  clockContainer: {
+    padding: 15,
+    backgroundColor: '#2a2a2a',
+    borderRadius: 10,
+    width: '90%',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginVertical: 15,
+  },
+  timerText: {
+    fontSize: 26,
+    fontFamily: 'monospace',
+    color: 'white',
+    fontWeight: 'bold',
+  },
+  playerLabel: {
+    color: '#888',
+    fontSize: 12,
+    fontWeight: 'bold',
+    textTransform: 'uppercase',
   },
 });
 
-export default styles
+export default styles;
