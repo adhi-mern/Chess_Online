@@ -1,8 +1,8 @@
 import { Chess, Square } from 'chess.js';
 import { useEffect, useRef, useState, useMemo } from 'react';
-import { Image, Pressable, Text, View, Alert, TouchableOpacity } from 'react-native';
+import { Image, Pressable, Text, View, TouchableOpacity, Modal } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { ref, onValue, set, update, onDisconnect } from 'firebase/database';
+import { ref, onValue, update, onDisconnect } from 'firebase/database';
 import { Audio } from 'expo-av';
 import styles from '../styles/chess.styles';
 import { db } from '../firebaseConfig';
@@ -26,23 +26,22 @@ export default function ChessScreen() {
   const [legalMoves, setLegalMoves] = useState<Square[]>([]);
   const [whiteTime, setWhiteTime] = useState(parseInt(timeLimit || "300"));
   const [blackTime, setBlackTime] = useState(parseInt(timeLimit || "300"));
-  const [gameActive, setGameActive] = useState(true);
+  
+  // State for Custom Win/Loss Popup
+  const [gameOver, setGameOver] = useState<{ visible: boolean; msg: string; isWin: boolean }>({
+    visible: false, msg: '', isWin: false
+  });
 
   // Sound Refs
   const moveSound = useRef<Audio.Sound | null>(null);
   const checkSound = useRef<Audio.Sound | null>(null);
   const victorySound = useRef<Audio.Sound | null>(null);
 
-  // Helper to play sounds reliably
-  const playSfx = async (soundRef: React.MutableRefObject<Audio.Sound | null>) => {
+  const playSfx = async (type: 'move' | 'check' | 'victory') => {
     try {
-      if (soundRef.current) {
-        await soundRef.current.setPositionAsync(0);
-        await soundRef.current.playAsync();
-      }
-    } catch (error) {
-      console.log("Sound play error:", error);
-    }
+      const s = type === 'move' ? moveSound.current : type === 'check' ? checkSound.current : victorySound.current;
+      if (s) { await s.setPositionAsync(0); await s.playAsync(); }
+    } catch (e) { console.log("Sound Error", e); }
   };
 
   useEffect(() => {
@@ -56,17 +55,13 @@ export default function ChessScreen() {
       checkSound.current = cS;
       const { sound: vS } = await Audio.Sound.createAsync(require('../assets/sounds/Victory.mp3'));
       victorySound.current = vS;
+      // Note: If you add Capture.mp3 later, you can load it here.
     }
     loadSounds();
 
+    // Initial Setup
     if (color === 'w') {
-      update(gameDbRef, {
-        fen: gameRef.current.fen(),
-        wTime: parseInt(timeLimit || "300"),
-        bTime: parseInt(timeLimit || "300"),
-        status: 'playing',
-        hostOnline: true
-      });
+      update(gameDbRef, { fen: gameRef.current.fen(), wTime: parseInt(timeLimit || "300"), bTime: parseInt(timeLimit || "300"), status: 'playing', hostOnline: true });
       onDisconnect(ref(db, `games/${gameId}/hostOnline`)).set(false);
     } else {
       update(gameDbRef, { hasOpponent: true, guestOnline: true });
@@ -77,25 +72,25 @@ export default function ChessScreen() {
       const data = snapshot.val();
       if (!data) return;
 
-      if (data.hostOnline === false && gameActive) triggerEnd("You Win! Host disconnected.");
-      if (data.guestOnline === false && gameActive) triggerEnd("You Win! Opponent disconnected.");
-      if (data.status === 'quit_w') triggerEnd(color === 'w' ? "You Resigned." : "Opponent Resigned.");
-      if (data.status === 'quit_b') triggerEnd(color === 'b' ? "You Resigned." : "Opponent Resigned.");
+      // Handle Win/Loss/Timeout
+      if (data.status === 'timeout_w') triggerEnd(color === 'w' ? "YOU LOSE (Time Out)" : "YOU WIN (Time Out)");
+      if (data.status === 'timeout_b') triggerEnd(color === 'b' ? "YOU LOSE (Time Out)" : "YOU WIN (Time Out)");
+      if (data.status?.startsWith('quit_')) {
+        const quitter = data.status.split('_')[1];
+        triggerEnd(quitter === color ? "YOU LOSE (Resigned)" : "YOU WIN (Opponent Resigned)");
+      }
+      if (data.hostOnline === false && !gameOver.visible) triggerEnd("YOU WIN (Host Left)");
+      if (data.guestOnline === false && !gameOver.visible) triggerEnd("YOU WIN (Opponent Left)");
 
+      // Sync Board
       if (data.fen && data.fen !== gameRef.current.fen()) {
         gameRef.current.load(data.fen);
         setBoard(gameRef.current.board());
         setWhiteTime(data.wTime);
         setBlackTime(data.bTime);
-        
-        // REMOTE MOVE SOUND LOGIC
-        if (gameRef.current.isCheckmate()) {
-          playSfx(victorySound);
-        } else if (gameRef.current.isCheck()) {
-          playSfx(checkSound); // This plays on the receiving device
-        } else {
-          playSfx(moveSound);
-        }
+        if (gameRef.current.isCheckmate()) playSfx('victory');
+        else if (gameRef.current.isCheck()) playSfx('check');
+        else playSfx('move');
       }
     });
 
@@ -107,47 +102,44 @@ export default function ChessScreen() {
     };
   }, [gameId]);
 
+  // --- TIMER LOGIC ---
   useEffect(() => {
-    if (!gameActive) return;
+    if (gameOver.visible) return;
     const interval = setInterval(() => {
       const turn = gameRef.current.turn();
-      if (turn === 'w') setWhiteTime(t => (t <= 0 ? (handleTimeout('w'), 0) : t - 1));
-      else setBlackTime(t => (t <= 0 ? (handleTimeout('b'), 0) : t - 1));
+      if (turn === 'w') {
+        setWhiteTime(t => {
+          if (t <= 1) { handleTimeout('w'); return 0; }
+          return t - 1;
+        });
+      } else {
+        setBlackTime(t => {
+          if (t <= 1) { handleTimeout('b'); return 0; }
+          return t - 1;
+        });
+      }
     }, 1000);
     return () => clearInterval(interval);
-  }, [gameActive]);
+  }, [gameOver.visible]);
 
-  const handleTimeout = (loser: string) => {
+  const handleTimeout = (loser: 'w' | 'b') => {
     update(ref(db, `games/${gameId}`), { status: `timeout_${loser}` });
   };
 
-  const triggerEnd = async (msg: string) => {
-    setGameActive(false);
-    if (msg.includes("Win")) playSfx(victorySound);
-    Alert.alert("Game Over", msg, [{ text: "OK", onPress: () => router.replace('/') }]);
+  const triggerEnd = (msg: string) => {
+    const isWin = msg.includes("WIN");
+    if (isWin) playSfx('victory');
+    setGameOver({ visible: true, msg, isWin });
   };
 
-  const handleQuit = () => {
-    Alert.alert("Resign?", "Leave the game?", [
-      { text: "STAY", style: 'cancel' },
-      { text: "LEAVE", onPress: () => {
-        update(ref(db, `games/${gameId}`), { 
-            status: `quit_${color}`,
-            [color === 'w' ? 'hostOnline' : 'guestOnline']: false 
-        });
-        router.replace('/');
-      }}
-    ]);
-  };
-
+  // --- SQUARE LOGIC ---
   async function onSquarePress(square: Square) {
-    if (!gameActive || gameRef.current.turn() !== color) return;
+    if (gameOver.visible || gameRef.current.turn() !== color) return;
 
     if (!selectedSquare) {
       const piece = gameRef.current.get(square);
       if (!piece || piece.color !== color) return;
       const moves = gameRef.current.moves({ square, verbose: true });
-      if (moves.length === 0) return;
       setSelectedSquare(square);
       setLegalMoves(moves.map(m => m.to));
       return;
@@ -157,20 +149,15 @@ export default function ChessScreen() {
       const move = gameRef.current.move({ from: selectedSquare, to: square, promotion: 'q' });
       if (move) {
         setBoard(gameRef.current.board());
-        update(ref(db, `games/${gameId}`), {
-          fen: gameRef.current.fen(),
-          wTime: whiteTime,
-          bTime: blackTime
-        });
+        update(ref(db, `games/${gameId}`), { fen: gameRef.current.fen(), wTime: whiteTime, bTime: blackTime });
 
-        // LOCAL MOVE SOUND LOGIC
         if (gameRef.current.isCheckmate()) {
-          playSfx(victorySound);
-          triggerEnd("Checkmate! You Win.");
+          playSfx('victory');
+          triggerEnd("YOU WIN (Checkmate)");
         } else if (gameRef.current.isCheck()) {
-          playSfx(checkSound); // This plays on the moving device
+          playSfx('check');
         } else {
-          playSfx(moveSound);
+          playSfx('move');
         }
       }
     }
@@ -178,23 +165,48 @@ export default function ChessScreen() {
     setLegalMoves([]);
   }
 
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
-  };
+  // --- HIGHLIGHT LOGIC ---
+  const kingSquare = useMemo(() => {
+    if (!gameRef.current.isCheck()) return null;
+    const turn = gameRef.current.turn();
+    let pos = "";
+    gameRef.current.board().forEach((row, r) => {
+      row.forEach((sq, c) => {
+        if (sq?.type === 'k' && sq?.color === turn) pos = String.fromCharCode(97 + c) + (8 - r);
+      });
+    });
+    return pos;
+  }, [board]);
 
-  const renderBoard = useMemo(() => {
-    const currentBoard = [...board];
-    return color === 'b' ? currentBoard.reverse() : currentBoard;
-  }, [board, color]);
+  const formatTime = (s: number) => `${Math.floor(s/60)}:${(s%60).toString().padStart(2, '0')}`;
+  const renderBoard = useMemo(() => color === 'b' ? [...board].reverse() : board, [board, color]);
 
   return (
     <View style={styles.container}>
+      {/* CUSTOM WIN/LOSS POPUP */}
+      <Modal visible={gameOver.visible} transparent animationType="fade">
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'center', alignItems: 'center' }}>
+          <View style={{ backgroundColor: 'white', padding: 30, borderRadius: 15, alignItems: 'center', width: '80%' }}>
+            <Text style={{ fontSize: 28, fontWeight: 'bold', color: gameOver.isWin ? '#2ecc71' : '#e74c3c', marginBottom: 20 }}>
+              {gameOver.msg}
+            </Text>
+            <TouchableOpacity 
+              style={{ backgroundColor: '#333', paddingVertical: 12, paddingHorizontal: 30, borderRadius: 8 }}
+              onPress={() => router.replace('/')}
+            >
+              <Text style={{ color: 'white', fontWeight: 'bold' }}>MAIN MENU</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
       <View style={styles.header}>
         <Text style={styles.gameIdText}>ROOM: {gameId}</Text>
-        <TouchableOpacity style={styles.quitBtn} onPress={handleQuit}>
-           <Text style={{color: 'white', fontWeight: 'bold'}}>QUIT</Text>
+        <TouchableOpacity style={[styles.quitBtn, {backgroundColor: '#e74c3c'}]} onPress={() => {
+          update(ref(db, `games/${gameId}`), { status: `quit_${color}` });
+          router.replace('/');
+        }}>
+          <Text style={{color: 'white', fontWeight: 'bold'}}>QUIT</Text>
         </TouchableOpacity>
       </View>
 
@@ -207,16 +219,22 @@ export default function ChessScreen() {
         {renderBoard.map((row, rowIndex) => (
           <View key={rowIndex} style={styles.row}>
             {(color === 'b' ? [...row].reverse() : row).map((square, colIndex) => {
-               const displayRow = color === 'b' ? rowIndex : 7 - rowIndex;
-               const displayCol = color === 'b' ? 7 - colIndex : colIndex;
-               const squareName = String.fromCharCode(97 + displayCol) + (displayRow + 1);
+              const dRow = color === 'b' ? rowIndex : 7 - rowIndex;
+              const dCol = color === 'b' ? 7 - colIndex : colIndex;
+              const sqName = String.fromCharCode(97 + dCol) + (dRow + 1);
+              
+              const isKingCheck = kingSquare === sqName;
+              const isCapture = legalMoves.includes(sqName as Square) && square;
+
               return (
-                <Pressable key={colIndex} onPress={() => onSquarePress(squareName as Square)} style={[
-                    styles.square,
-                    { backgroundColor: (displayRow + displayCol) % 2 === 0 ? '#eeeed2' : '#769656' },
-                    squareName === selectedSquare && styles.selectedSquare,
-                  ]}>
-                  {legalMoves.includes(squareName as Square) && !square && <View style={styles.dot} />}
+                <Pressable key={colIndex} onPress={() => onSquarePress(sqName as Square)} style={[
+                  styles.square,
+                  { backgroundColor: (dRow + dCol) % 2 === 0 ? '#eeeed2' : '#769656' },
+                  sqName === selectedSquare && { backgroundColor: '#f5f682' },
+                  isKingCheck && { backgroundColor: '#ff4d4d' }, // RED CHECK
+                  isCapture && { borderWidth: 4, borderColor: 'rgba(255, 0, 0, 0.4)' } // CUT HIGHLIGHT
+                ]}>
+                  {legalMoves.includes(sqName as Square) && !square && <View style={styles.dot} />}
                   {square && <Image source={pieceImages[square.color + square.type]} style={styles.piece} />}
                 </Pressable>
               );
