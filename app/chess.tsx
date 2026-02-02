@@ -6,6 +6,7 @@ import { ref, onValue, update, onDisconnect } from 'firebase/database';
 import { Audio } from 'expo-av';
 import styles from '../styles/chess.styles';
 import { db } from '../firebaseConfig';
+import { useMoveTimer } from './hooks/useMoveTimer';
 
 const pieceImages: Record<string, any> = {
   wp: require('../assets/pieces/white-pawn.png'), wr: require('../assets/pieces/white-rook.png'),
@@ -19,7 +20,6 @@ const pieceImages: Record<string, any> = {
 export default function ChessScreen() {
   const { gameId, color, timeLimit } = useLocalSearchParams<{ gameId: string; color: 'w' | 'b', timeLimit: string }>();
   const router = useRouter();
-  
   const gameRef = useRef(new Chess());
   const [board, setBoard] = useState(gameRef.current.board());
   const [selectedSquare, setSelectedSquare] = useState<Square | null>(null);
@@ -27,12 +27,18 @@ export default function ChessScreen() {
   const [whiteTime, setWhiteTime] = useState(parseInt(timeLimit || "300"));
   const [blackTime, setBlackTime] = useState(parseInt(timeLimit || "300"));
   
-  // State for Custom Win/Loss Popup
   const [gameOver, setGameOver] = useState<{ visible: boolean; msg: string; isWin: boolean }>({
     visible: false, msg: '', isWin: false
   });
 
-  // Sound Refs
+  // --- TIMER HOOK ---
+  const { moveTimer, resetMoveTimer } = useMoveTimer(
+    gameId, 
+    color, 
+    gameRef.current.turn(), 
+    !gameOver.visible
+  );
+
   const moveSound = useRef<Audio.Sound | null>(null);
   const checkSound = useRef<Audio.Sound | null>(null);
   const victorySound = useRef<Audio.Sound | null>(null);
@@ -55,11 +61,9 @@ export default function ChessScreen() {
       checkSound.current = cS;
       const { sound: vS } = await Audio.Sound.createAsync(require('../assets/sounds/Victory.mp3'));
       victorySound.current = vS;
-      // Note: If you add Capture.mp3 later, you can load it here.
     }
     loadSounds();
 
-    // Initial Setup
     if (color === 'w') {
       update(gameDbRef, { fen: gameRef.current.fen(), wTime: parseInt(timeLimit || "300"), bTime: parseInt(timeLimit || "300"), status: 'playing', hostOnline: true });
       onDisconnect(ref(db, `games/${gameId}/hostOnline`)).set(false);
@@ -71,6 +75,10 @@ export default function ChessScreen() {
     const unsubscribe = onValue(gameDbRef, (snapshot) => {
       const data = snapshot.val();
       if (!data) return;
+
+      // Handle Abandonment (Inactivity)
+      if (data.status === 'abandoned_w') triggerEnd(color === 'w' ? "YOU LOSE (Inactive)" : "YOU WIN (Opponent Inactive)");
+      if (data.status === 'abandoned_b') triggerEnd(color === 'b' ? "YOU LOSE (Inactive)" : "YOU WIN (Opponent Inactive)");
 
       // Handle Win/Loss/Timeout
       if (data.status === 'timeout_w') triggerEnd(color === 'w' ? "YOU LOSE (Time Out)" : "YOU WIN (Time Out)");
@@ -84,6 +92,7 @@ export default function ChessScreen() {
 
       // Sync Board
       if (data.fen && data.fen !== gameRef.current.fen()) {
+        resetMoveTimer(); // <-- RESET TIMER ON OPPONENT MOVE
         gameRef.current.load(data.fen);
         setBoard(gameRef.current.board());
         setWhiteTime(data.wTime);
@@ -102,7 +111,6 @@ export default function ChessScreen() {
     };
   }, [gameId]);
 
-  // --- TIMER LOGIC ---
   useEffect(() => {
     if (gameOver.visible) return;
     const interval = setInterval(() => {
@@ -132,7 +140,6 @@ export default function ChessScreen() {
     setGameOver({ visible: true, msg, isWin });
   };
 
-  // --- SQUARE LOGIC ---
   async function onSquarePress(square: Square) {
     if (gameOver.visible || gameRef.current.turn() !== color) return;
 
@@ -148,6 +155,7 @@ export default function ChessScreen() {
     if (legalMoves.includes(square)) {
       const move = gameRef.current.move({ from: selectedSquare, to: square, promotion: 'q' });
       if (move) {
+        resetMoveTimer(); // <-- RESET TIMER ON YOUR MOVE
         setBoard(gameRef.current.board());
         update(ref(db, `games/${gameId}`), { fen: gameRef.current.fen(), wTime: whiteTime, bTime: blackTime });
 
@@ -165,7 +173,6 @@ export default function ChessScreen() {
     setLegalMoves([]);
   }
 
-  // --- HIGHLIGHT LOGIC ---
   const kingSquare = useMemo(() => {
     if (!gameRef.current.isCheck()) return null;
     const turn = gameRef.current.turn();
@@ -183,11 +190,10 @@ export default function ChessScreen() {
 
   return (
     <View style={styles.container}>
-      {/* CUSTOM WIN/LOSS POPUP */}
       <Modal visible={gameOver.visible} transparent animationType="fade">
         <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'center', alignItems: 'center' }}>
           <View style={{ backgroundColor: 'white', padding: 30, borderRadius: 15, alignItems: 'center', width: '80%' }}>
-            <Text style={{ fontSize: 28, fontWeight: 'bold', color: gameOver.isWin ? '#2ecc71' : '#e74c3c', marginBottom: 20 }}>
+            <Text style={{ fontSize: 24, fontWeight: 'bold', color: gameOver.isWin ? '#2ecc71' : '#e74c3c', marginBottom: 20, textAlign: 'center' }}>
               {gameOver.msg}
             </Text>
             <TouchableOpacity 
@@ -201,7 +207,13 @@ export default function ChessScreen() {
       </Modal>
 
       <View style={styles.header}>
-        <Text style={styles.gameIdText}>ROOM: {gameId}</Text>
+        <View>
+          <Text style={styles.gameIdText}>ROOM: {gameId}</Text>
+          {/* DISPLAY MOVE TIMER */}
+          <Text style={{ color: moveTimer <= 5 ? '#e74c3c' : '#f1c40f', fontWeight: 'bold' }}>
+            Move Clock: {moveTimer}s
+          </Text>
+        </View>
         <TouchableOpacity style={[styles.quitBtn, {backgroundColor: '#e74c3c'}]} onPress={() => {
           update(ref(db, `games/${gameId}`), { status: `quit_${color}` });
           router.replace('/');
@@ -231,8 +243,8 @@ export default function ChessScreen() {
                   styles.square,
                   { backgroundColor: (dRow + dCol) % 2 === 0 ? '#eeeed2' : '#769656' },
                   sqName === selectedSquare && { backgroundColor: '#f5f682' },
-                  isKingCheck && { backgroundColor: '#ff4d4d' }, // RED CHECK
-                  isCapture && { borderWidth: 4, borderColor: 'rgba(255, 0, 0, 0.4)' } // CUT HIGHLIGHT
+                  isKingCheck && { backgroundColor: '#ff4d4d' },
+                  isCapture && { borderWidth: 4, borderColor: 'rgba(255, 0, 0, 0.4)' }
                 ]}>
                   {legalMoves.includes(sqName as Square) && !square && <View style={styles.dot} />}
                   {square && <Image source={pieceImages[square.color + square.type]} style={styles.piece} />}
@@ -248,5 +260,5 @@ export default function ChessScreen() {
         <Text style={[styles.timerText, { color: '#769656' }]}>{color === 'w' ? formatTime(whiteTime) : formatTime(blackTime)}</Text>
       </View>
     </View>
-  );
+  ); 
 }
