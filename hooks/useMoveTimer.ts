@@ -1,9 +1,9 @@
 import { ref, update } from 'firebase/database';
 import { useEffect, useState } from 'react';
-import { db } from '../../firebaseConfig';
+import { db } from '../firebaseConfig';
 
 export function useMoveTimer(gameId: string, color: 'w' | 'b', turn: 'w' | 'b', isActive: boolean) {
-    const [moveTimer, setMoveTimer] = useState(20);
+    const [moveTimer, setMoveTimer] = useState(35);
 
     useEffect(() => {
         // Don't start ticking if the game is over

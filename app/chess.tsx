@@ -6,7 +6,7 @@ import { ref, onValue, update, onDisconnect } from 'firebase/database';
 import { Audio } from 'expo-av';
 import styles from '../styles/chess.styles';
 import { db } from '../firebaseConfig';
-import { useMoveTimer } from './hooks/useMoveTimer';
+import { useMoveTimer } from '../hooks/useMoveTimer';
 
 const pieceImages: Record<string, any> = {
   wp: require('../assets/pieces/white-pawn.png'), wr: require('../assets/pieces/white-rook.png'),
